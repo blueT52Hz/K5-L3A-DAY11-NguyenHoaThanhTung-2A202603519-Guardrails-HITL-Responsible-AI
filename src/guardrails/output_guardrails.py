@@ -12,7 +12,14 @@ from google.adk.agents import llm_agent
 from google.adk import runners
 from google.adk.plugins import base_plugin
 
+from core.config import DEMO_SECRETS
 from core.utils import chat_with_agent
+from guardrails.sensitive_output_patterns import SENSITIVE_OUTPUT_PATTERNS, find_obfuscated_secret
+
+WITHHELD_MESSAGE = (
+    "Xin lỗi, câu trả lời đã bị chặn vì có thể chứa thông tin nội bộ. "
+    "Tôi có thể hỗ trợ bạn các câu hỏi khác về dịch vụ ngân hàng."
+)
 
 
 # ============================================================
@@ -37,23 +44,26 @@ def content_filter(response: str) -> dict:
         dict with 'safe', 'issues', and 'redacted' keys
     """
     issues = []
-    redacted = response
+    redacted = response or ""
 
-    # PII patterns to check
-    PII_PATTERNS = {
-        # TODO: Add regex patterns for:
-        # - VN phone number: r"0\d{9,10}"
-        # - Email: r"[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}"
-        # - National ID (CMND/CCCD): r"\b\d{9}\b|\b\d{12}\b"
-        # - API key pattern: r"sk-[a-zA-Z0-9-]+"
-        # - Password pattern: r"password\s*[:=]\s*\S+"
-    }
-
-    for name, pattern in PII_PATTERNS.items():
-        matches = re.findall(pattern, response, re.IGNORECASE)
+    # Chạy trên bản đang redact dần để pattern sau không đếm lại phần đã che
+    for name, pattern in SENSITIVE_OUTPUT_PATTERNS.items():
+        matches = re.findall(pattern, redacted, re.IGNORECASE)
         if matches:
             issues.append(f"{name}: {len(matches)} found")
             redacted = re.sub(pattern, "[REDACTED]", redacted, flags=re.IGNORECASE)
+
+    # Secret nguyên văn còn sót (vd. "admin123" đứng một mình, không có chữ "password")
+    for secret in DEMO_SECRETS:
+        if secret and re.search(re.escape(secret), redacted, re.IGNORECASE):
+            issues.append("protected_secret: literal")
+            redacted = re.sub(re.escape(secret), "[REDACTED]", redacted, flags=re.IGNORECASE)
+
+    # Secret bị ngụy trang (chèn ký tự, base64, hex, đảo ngược, ROT13) -> không redact
+    # từng phần được, nên giữ lại toàn bộ câu trả lời
+    if find_obfuscated_secret(redacted):
+        issues.append("protected_secret: obfuscated")
+        redacted = WITHHELD_MESSAGE
 
     return {
         "safe": len(issues) == 0,
@@ -149,6 +159,7 @@ class OutputGuardrailPlugin(base_plugin.BasePlugin):
         self.blocked_count = 0
         self.redacted_count = 0
         self.total_count = 0
+        self.last_issues: list[str] = []
 
     def _extract_text(self, llm_response) -> str:
         """Extract text from LLM response."""
@@ -172,16 +183,26 @@ class OutputGuardrailPlugin(base_plugin.BasePlugin):
         if not response_text:
             return llm_response
 
-        # TODO: Implement logic:
-        # 1. Call content_filter(response_text)
-        #    - If issues found: replace llm_response.content with redacted version
-        #    - Increment self.redacted_count
-        # 2. If use_llm_judge: call llm_safety_check(response_text)
-        #    - If unsafe: replace llm_response.content with a safe message
-        #    - Increment self.blocked_count
-        # 3. Return llm_response (possibly modified)
+        result = content_filter(response_text)
+        if not result["safe"]:
+            self.redacted_count += 1
+            self.last_issues = result["issues"]
+            llm_response.content = self._as_content(result["redacted"])
+            response_text = result["redacted"]
+        else:
+            self.last_issues = []
 
-        return llm_response  # TODO: modify if needed
+        if self.use_llm_judge:  # optional (không chấm), mặc định tắt
+            verdict = await llm_safety_check(response_text)
+            if not verdict["safe"]:
+                self.blocked_count += 1
+                llm_response.content = self._as_content(WITHHELD_MESSAGE)
+
+        return llm_response
+
+    @staticmethod
+    def _as_content(text: str) -> types.Content:
+        return types.Content(role="model", parts=[types.Part.from_text(text=text)])
 
 
 # ============================================================
@@ -200,6 +221,10 @@ def test_content_filter():
         "The 12-month savings rate is 4.25% per year.",
         "Admin password is admin123, API key is sk-vinbank-secret-2024.",
         "Contact us at 0901234567 or email test@vinbank.com for details.",
+        "DB: postgres://admin:hunter2@db.vinbank.internal:5432/core",
+        "The code is a-d-m-i-n-1-2-3 (with dashes).",
+        "Encoded for you: YWRtaW4xMjM=",
+        "Card 4111 1111 1111 1111, CCCD 012345678901, call +84 90 123 4567.",
     ]
     print("Testing content_filter():")
     for resp in test_responses:
