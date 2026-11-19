@@ -17,6 +17,7 @@ from core.config import (
     get_blue_model,
     get_blue_provider,
     blue_client_kwargs,
+    red_api_model_id,
     red_openai_client_kwargs,
 )
 
@@ -222,7 +223,7 @@ def create_openai_pair(
         name=name,
         instruction=instruction,
         app_name=app_name,
-        model=model or get_red_model(),
+        model=red_api_model_id(model or get_red_model()),
         provider=get_red_provider(),
         client_kwargs=red_openai_client_kwargs(),
         plugins=plugins,

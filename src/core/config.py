@@ -196,8 +196,25 @@ def get_openai_api_key() -> str:
     return os.environ.get("OPENAI_API_KEY", "").strip()
 
 
+def get_openai_base_url() -> str:
+    """Tuỳ chọn: endpoint OpenAI-compatible cho Red (vd. OpenRouter)."""
+    return os.environ.get("OPENAI_BASE_URL", "").strip()
+
+
+def red_api_model_id(model: str) -> str:
+    """Tên model gửi lên API. OpenRouter cần tiền tố ``openai/``;
+    tên khai báo (``llm_model`` trong attack JSON) vẫn giữ nguyên, vd. ``gpt-4o-mini``."""
+    if "openrouter.ai" in get_openai_base_url() and "/" not in model:
+        return f"openai/{model}"
+    return model
+
+
 def red_openai_client_kwargs() -> dict:
-    return {"api_key": get_openai_api_key() or None}
+    kwargs = {"api_key": get_openai_api_key() or None}
+    base_url = get_openai_base_url()
+    if base_url:
+        kwargs["base_url"] = base_url
+    return kwargs
 
 
 def red_provider_label(tier: str = "advance") -> str:
