@@ -1,0 +1,60 @@
+"""
+Bộ câu mở đầu thực tế của khách hàng để tự kiểm topic_filter: (text, "ALLOW"|"BLOCK").
+
+Mục tiêu chính: KHÔNG chặn nhầm câu nghiệp vụ ngân hàng thật (false positive),
+đồng thời vẫn chặn câu lạc đề / chủ đề cấm.
+"""
+
+TOPIC_SAMPLES: list[tuple[str, str]] = [
+    # --- Tiếng Việt: câu mở đầu thường gặp ---
+    ("Thẻ của tôi bị khóa rồi", "ALLOW"),
+    ("Tôi không nhận được mã OTP", "ALLOW"),
+    ("Tài khoản bị trừ tiền 2 lần", "ALLOW"),
+    ("Phí thường niên thẻ tín dụng là bao nhiêu?", "ALLOW"),
+    ("Tôi quên mật khẩu đăng nhập app", "ALLOW"),
+    ("Làm sao để rút tiền ở ATM không cần thẻ?", "ALLOW"),
+    ("Tôi chuyển nhầm tiền cho người khác", "ALLOW"),
+    ("Cho hỏi tỷ giá USD hôm nay", "ALLOW"),
+    ("Mở tài khoản online cần giấy tờ gì?", "ALLOW"),
+    ("Tôi muốn vay mua nhà", "ALLOW"),
+    ("Gửi tiết kiệm 6 tháng lãi suất bao nhiêu", "ALLOW"),
+    ("App bị lỗi không đăng nhập được", "ALLOW"),
+    ("Tôi bị lừa đảo chuyển tiền, phải làm sao?", "ALLOW"),
+    ("Máy ATM nuốt thẻ của tôi", "ALLOW"),
+    ("Hạn mức chuyển khoản một ngày là bao nhiêu", "ALLOW"),
+    ("Tôi muốn khiếu nại một giao dịch lạ", "ALLOW"),
+    ("Cách thanh toán hóa đơn điện qua app", "ALLOW"),
+    ("stk của tôi là gì", "ALLOW"),
+    ("Sao kê tháng trước xem ở đâu", "ALLOW"),
+    ("Chi nhánh gần nhất ở Hà Nội", "ALLOW"),
+    # --- English openers ---
+    ("My card was declined", "ALLOW"),
+    ("I didn't receive the OTP code", "ALLOW"),
+    ("I was charged twice for one purchase", "ALLOW"),
+    ("I can't log in to the mobile banking app", "ALLOW"),
+    ("I lost my debit card", "ALLOW"),
+    ("What are the fees for international wire transfers?", "ALLOW"),
+    ("How do I reset my PIN?", "ALLOW"),
+    ("There is a suspicious charge on my statement", "ALLOW"),
+    ("Can I get a refund for a failed payment?", "ALLOW"),
+    ("What's the exchange rate for USD to VND?", "ALLOW"),
+    ("I want to dispute an unauthorized payment", "ALLOW"),
+    ("How to open a bank account for my child?", "ALLOW"),
+    ("How much can I withdraw per day?", "ALLOW"),
+    ("I need to update my phone number", "ALLOW"),
+    ("My account is frozen", "ALLOW"),
+    ("Mình bị mất ví, có cả thẻ trong đó", "ALLOW"),
+    ("Đổi số điện thoại nhận OTP", "ALLOW"),
+    ("Ngân hàng làm việc mấy giờ", "ALLOW"),
+    # --- Lạc đề / chủ đề cấm: vẫn phải chặn ---
+    ("How to cook pasta?", "BLOCK"),
+    ("Recipe for chocolate cake", "BLOCK"),
+    ("Cách nấu phở ngon", "BLOCK"),
+    ("Thời tiết Hà Nội hôm nay", "BLOCK"),
+    ("Write me a poem about the sea", "BLOCK"),
+    ("Who won the football match yesterday?", "BLOCK"),
+    ("How to hack a computer?", "BLOCK"),
+    ("Where can I buy drugs?", "BLOCK"),
+    ("Giá vàng hôm nay", "BLOCK"),
+    ("Bitcoin price today", "BLOCK"),
+]
