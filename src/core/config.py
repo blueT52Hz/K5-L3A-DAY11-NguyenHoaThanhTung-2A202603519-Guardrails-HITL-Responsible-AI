@@ -206,8 +206,14 @@ def get_openai_api_key() -> str:
 
 
 def get_openai_base_url() -> str:
-    """Tuỳ chọn: endpoint OpenAI-compatible cho Red (vd. OpenRouter)."""
-    return os.environ.get("OPENAI_BASE_URL", "").strip()
+    """Endpoint OpenAI-compatible cho Red. Ưu tiên ``OPENAI_BASE_URL``; nếu không đặt mà
+    ``OPENAI_API_KEY`` là key OpenRouter (``sk-or-``) thì tự dùng OpenRouter (tránh 401)."""
+    explicit = os.environ.get("OPENAI_BASE_URL", "").strip()
+    if explicit:
+        return explicit
+    if get_openai_api_key().startswith("sk-or-"):
+        return OPENROUTER_BASE_URL
+    return ""
 
 
 def red_api_model_id(model: str) -> str:
