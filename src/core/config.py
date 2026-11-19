@@ -33,12 +33,18 @@ except ImportError:
 PROVIDER_OPENAI = "openai"
 PROVIDER_GEMINI = "gemini"
 PROVIDER_OPENROUTER = "openrouter"
+PROVIDER_LIQUID = "liquid"
 
-# --- Blue Team (LOCKED) ---
-BLUE_PROVIDER = PROVIDER_OPENROUTER
+# --- Blue Team (LOCKED model family: Liquid LFM-3 1.7B) ---
+# Hai đường gọi cùng một model:
+#   openrouter -> OpenRouter ``liquid/lfm-3-1.7b:free``
+#   liquid     -> API trực tiếp Liquid AI ``lfm3-1.7b`` (OpenAI-compatible)
+BLUE_PROVIDER = PROVIDER_OPENROUTER  # mặc định
 BLUE_MODEL = "liquid/lfm-3-1.7b:free"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 DEFAULT_OPENROUTER_MODEL = BLUE_MODEL  # alias
+LIQUID_BLUE_MODEL = "lfm3-1.7b"
+LIQUID_BASE_URL = "https://api.liquid.ai/openai/v1"
 
 # --- Red Team ---
 DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
@@ -96,30 +102,51 @@ except FileNotFoundError:
 
 
 # ---------------------------------------------------------------------------
-# Blue Team — fixed OpenRouter Liquid
+# Blue Team — Liquid LFM-3 1.7B qua OpenRouter hoặc Liquid API trực tiếp
 # ---------------------------------------------------------------------------
-
-def get_blue_provider() -> str:
-    return BLUE_PROVIDER
-
-
-def get_blue_model() -> str:
-    # Hard-locked; env cannot override for the graded Blue Team path.
-    return BLUE_MODEL
-
 
 def get_openrouter_api_key() -> str:
     return os.environ.get("OPENROUTER_API_KEY", "").strip()
 
 
+def get_liquid_api_key() -> str:
+    return os.environ.get("LIQUID_API_KEY", "").strip()
+
+
+def get_blue_provider() -> str:
+    """``BLUE_PROVIDER=openrouter|liquid``; nếu không đặt thì tự chọn theo key có sẵn
+    (chỉ có LIQUID_API_KEY -> liquid, còn lại -> openrouter)."""
+    raw = os.environ.get("BLUE_PROVIDER", "").strip().lower()
+    if raw in {PROVIDER_LIQUID, "liquid-ai", "liquidai"}:
+        return PROVIDER_LIQUID
+    if raw == PROVIDER_OPENROUTER:
+        return PROVIDER_OPENROUTER
+    if get_liquid_api_key() and not get_openrouter_api_key():
+        return PROVIDER_LIQUID
+    return BLUE_PROVIDER
+
+
+def get_blue_model() -> str:
+    # Model family hard-locked; chỉ đổi tên model theo endpoint.
+    if get_blue_provider() == PROVIDER_LIQUID:
+        return LIQUID_BLUE_MODEL
+    return BLUE_MODEL
+
+
+def _env_or_default(name: str, default: str) -> str:
+    return os.environ.get(name, default).strip() or default
+
+
 def blue_client_kwargs() -> dict:
-    """OpenAI SDK kwargs pointing at OpenRouter (Blue Team only)."""
+    """OpenAI SDK kwargs cho Blue Team (OpenRouter hoặc Liquid API)."""
+    if get_blue_provider() == PROVIDER_LIQUID:
+        return {
+            "api_key": get_liquid_api_key() or None,
+            "base_url": _env_or_default("LIQUID_BASE_URL", LIQUID_BASE_URL),
+        }
     return {
         "api_key": get_openrouter_api_key() or None,
-        "base_url": (
-            os.environ.get("OPENROUTER_BASE_URL", OPENROUTER_BASE_URL).strip()
-            or OPENROUTER_BASE_URL
-        ),
+        "base_url": _env_or_default("OPENROUTER_BASE_URL", OPENROUTER_BASE_URL),
     }
 
 
@@ -235,8 +262,13 @@ def is_harder_model() -> bool:
 
 
 def setup_api_key():
-    """Ensure keys for Blue (OpenRouter) + Red / Red Advance (OpenAI or Gemini)."""
-    if not get_openrouter_api_key():
+    """Ensure keys for Blue (OpenRouter / Liquid) + Red / Red Advance (OpenAI or Gemini)."""
+    if get_blue_provider() == PROVIDER_LIQUID:
+        if not get_liquid_api_key():
+            os.environ["LIQUID_API_KEY"] = input(
+                "Enter Liquid AI API Key (Blue): "
+            ).strip()
+    elif not get_openrouter_api_key():
         os.environ["OPENROUTER_API_KEY"] = input(
             "Enter OpenRouter API Key (Blue): "
         ).strip()
