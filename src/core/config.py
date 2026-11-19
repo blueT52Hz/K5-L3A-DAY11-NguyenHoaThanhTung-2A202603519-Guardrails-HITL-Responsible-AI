@@ -105,12 +105,21 @@ except FileNotFoundError:
 # Blue Team — Liquid LFM-3 1.7B qua OpenRouter hoặc Liquid API trực tiếp
 # ---------------------------------------------------------------------------
 
+def _real_key(name: str) -> str:
+    """Đọc key từ env; coi placeholder chép từ .env.example (``sk-or-...``,
+    ``liquid_...``, quá ngắn) là CHƯA có key để không gọi API với key giả (401)."""
+    value = os.environ.get(name, "").strip().strip("\"'")
+    if not value or value.endswith("...") or len(value) < 20:
+        return ""
+    return value
+
+
 def get_openrouter_api_key() -> str:
-    return os.environ.get("OPENROUTER_API_KEY", "").strip()
+    return _real_key("OPENROUTER_API_KEY")
 
 
 def get_liquid_api_key() -> str:
-    return os.environ.get("LIQUID_API_KEY", "").strip()
+    return _real_key("LIQUID_API_KEY")
 
 
 def get_blue_provider() -> str:
